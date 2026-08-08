@@ -1,6 +1,6 @@
 # Pandas API Documentation QA System
 
-**Intern:** Muhammad Asad
+**Intern:** Muhammad Asad Riaz
 **Supervisor:** Dr. Tassadaq Hussain
 **Co-Supervisor:** Kamran Younis
 **Affiliation:** Centre for AI & BigData, Namal University Mianwali
