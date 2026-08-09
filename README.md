@@ -34,7 +34,7 @@ hallucinate - it can only repeat what the documentation actually says.
 ## Project Progress
 
 - [x] Day 1  - Passages extracted from pandas 3.0.5 docs
-- [ ] Day 2  - First 40 questions written
+- [x] Day 2  - 43 answerable questions written across 10 functions
 - [ ] Day 3  - Complete question set (120 questions)
 - [ ] Day 4  - Dev/held-back split + evaluation script
 - [ ] Day 5  - Baseline pipeline built
