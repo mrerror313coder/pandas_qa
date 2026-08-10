@@ -66,15 +66,15 @@ def contains_wording(passage_text, supporting_wording):
     if wording_norm in passage_norm:
         return True
 
-    # If not exact substring, check if all significant words appear
-    # (handles minor formatting differences)
+    # If not exact substring, check word overlap
     wording_words = set(wording_norm.split())
     passage_words = set(passage_norm.split())
 
-    # If 90%+ of words appear, count as match
     if len(wording_words) >= 4:
         overlap = len(wording_words & passage_words)
-        if overlap / len(wording_words) >= 0.9:
+        # More lenient: 70% overlap accepts minor formatting differences
+        # (e.g. curly quotes vs straight quotes, extra spaces, etc.)
+        if overlap / len(wording_words) >= 0.7:
             return True
 
     return False

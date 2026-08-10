@@ -37,7 +37,7 @@ hallucinate - it can only repeat what the documentation actually says.
 - [x] Day 2  - 43 answerable questions written across 10 functions
 - [x] Day 3  - Complete question set (120 questions - 80 answerable, 40 unanswerable)
 - [x] Day 4  - Dev (60) / heldback (60) split done + evaluate.py written and tested
-- [ ] Day 5  - Baseline pipeline built
+- [x] Day 5  - Baseline pipeline complete (unsupported=21%, recall=77.5%)
 - [ ] Day 6  - Configuration study (passage length, top-k)
 - [ ] Day 7  - Second embedding model + reranker
 - [ ] Day 8  - Refusal cut-off chosen

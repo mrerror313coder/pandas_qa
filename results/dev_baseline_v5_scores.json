@@ -1,0 +1,12 @@
+{
+  "questions_file": "data/questions/dev.jsonl",
+  "predictions_file": "results/dev_baseline_v5_predictions.jsonl",
+  "n_questions": 60,
+  "n_predictions": 60,
+  "retrieval_recall": 0.775,
+  "answer_correctness": 0.5,
+  "unsupported_rate": 0.21212121212121213,
+  "refusal_when_absent": 0.95,
+  "refusal_when_present": 0.2,
+  "median_response_time": 1.1255
+}
