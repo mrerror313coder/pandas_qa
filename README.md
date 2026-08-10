@@ -35,7 +35,7 @@ hallucinate - it can only repeat what the documentation actually says.
 
 - [x] Day 1  - Passages extracted from pandas 3.0.5 docs
 - [x] Day 2  - 43 answerable questions written across 10 functions
-- [ ] Day 3  - Complete question set (120 questions)
+- [x] Day 3  - Complete question set (120 questions - 80 answerable, 40 unanswerable)
 - [ ] Day 4  - Dev/held-back split + evaluation script
 - [ ] Day 5  - Baseline pipeline built
 - [ ] Day 6  - Configuration study (passage length, top-k)
