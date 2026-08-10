@@ -1,0 +1,12 @@
+{
+  "questions_file": "data/questions/heldback.jsonl",
+  "predictions_file": "results/HELDBACK_v1_predictions.jsonl",
+  "n_questions": 60,
+  "n_predictions": 60,
+  "retrieval_recall": 0.725,
+  "answer_correctness": 0.3125,
+  "unsupported_rate": 0.15625,
+  "refusal_when_absent": 1.0,
+  "refusal_when_present": 0.2,
+  "median_response_time": 1.3335
+}

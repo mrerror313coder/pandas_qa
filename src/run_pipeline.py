@@ -52,7 +52,7 @@ def parse_answer(raw_answer):
     return text_stripped, cited, False
 
 
-def main(questions_path, output_path, k, index_dir, embed_model="BAAI/bge-small-en-v1.5", refusal_threshold=0.0):
+def main(questions_path, output_path, k, index_dir, embed_model="BAAI/bge-small-en-v1.5", refusal_threshold=0.0, force_answer_threshold=1.0):
     print("=" * 60)
     print("  Running QA Pipeline")
     print("=" * 60)
@@ -82,14 +82,26 @@ def main(questions_path, output_path, k, index_dir, embed_model="BAAI/bge-small-
         predicted_answer, cited_doc, refused = parse_answer(raw_answer)
         
         # ═══════════════════════════════════════════════════════════
-        # APPLY REFUSAL THRESHOLD (Day 8 addition)
-        # Force refusal if top passage score is below threshold
+        # APPLY REFUSAL RULES (Day 8 + Day 9)
         # ═══════════════════════════════════════════════════════════
         top_score = passages[0]["score"] if passages else 0.0
+        
+        # Rule 1: Force refusal if score too low (Day 8)
         if refusal_threshold > 0 and top_score < refusal_threshold:
             refused = True
             predicted_answer = None
             cited_doc = None
+        
+        # Rule 2: Force ANSWER if score very high but LLM refused (Day 9)
+        # Retrieval is confident even when LLM was overly cautious
+        elif refused and top_score >= force_answer_threshold:
+            # Re-run generator with more direct prompt would be ideal,
+            # but as a simple fix, provide the top passage text as the answer.
+            # This is a citation of the retrieved content.
+            refused = False
+            top_passage = passages[0]["text"]
+            predicted_answer = f"Based on the documentation: {top_passage[:300]}"
+            cited_doc = passages[0]["doc_name"]
         
         # Citation: all retrieved passages combined
         if refused:
@@ -144,7 +156,9 @@ if __name__ == "__main__":
     parser.add_argument("--index-dir", default="data/index")
     parser.add_argument("--refusal-threshold", type=float, default=0.0,
                         help="Force refusal if top passage score < threshold")
+    parser.add_argument("--force-answer-threshold", type=float, default=1.0,
+                        help="Override LLM refusal if top score > threshold")
     parser.add_argument("--embed-model", default="BAAI/bge-small-en-v1.5")
     args = parser.parse_args()
     
-    main(args.questions, args.output, args.k, args.index_dir, args.embed_model, args.refusal_threshold)
+    main(args.questions, args.output, args.k, args.index_dir, args.embed_model, args.refusal_threshold, args.force_answer_threshold)
