@@ -1,0 +1,9 @@
+{
+  "model_name": "BAAI/bge-base-en-v1.5",
+  "n_passages": 11855,
+  "embedding_dim": 768,
+  "index_type": "IndexFlatIP",
+  "normalized": true,
+  "batch_size": 32,
+  "build_time_sec": 89.6
+}

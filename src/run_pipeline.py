@@ -52,7 +52,7 @@ def parse_answer(raw_answer):
     return text_stripped, cited, False
 
 
-def main(questions_path, output_path, k, index_dir):
+def main(questions_path, output_path, k, index_dir, embed_model="BAAI/bge-small-en-v1.5"):
     print("=" * 60)
     print("  Running QA Pipeline")
     print("=" * 60)
@@ -66,7 +66,7 @@ def main(questions_path, output_path, k, index_dir):
     print(f"\nLoaded {len(questions)} questions from {questions_path}")
     
     print("\nLoading retriever...")
-    retriever = Retriever(index_dir=index_dir)
+    retriever = Retriever(index_dir=index_dir, model_name=embed_model)
     
     print("\nLoading generator...")
     generator = Generator()
@@ -136,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", required=True)
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--index-dir", default="data/index")
+    parser.add_argument("--embed-model", default="BAAI/bge-small-en-v1.5")
     args = parser.parse_args()
     
-    main(args.questions, args.output, args.k, args.index_dir)
+    main(args.questions, args.output, args.k, args.index_dir, args.embed_model)

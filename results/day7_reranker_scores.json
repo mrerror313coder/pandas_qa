@@ -1,0 +1,12 @@
+{
+  "questions_file": "data/questions/dev.jsonl",
+  "predictions_file": "results/day7_reranker_preds.jsonl",
+  "n_questions": 60,
+  "n_predictions": 60,
+  "retrieval_recall": 0.675,
+  "answer_correctness": 0.35714285714285715,
+  "unsupported_rate": 0.26666666666666666,
+  "refusal_when_absent": 0.9,
+  "refusal_when_present": 0.3,
+  "median_response_time": 0.6085
+}

@@ -1,0 +1,12 @@
+{
+  "questions_file": "data/questions/dev.jsonl",
+  "predictions_file": "results/day7_combined_preds.jsonl",
+  "n_questions": 60,
+  "n_predictions": 60,
+  "retrieval_recall": 0.75,
+  "answer_correctness": 0.45161290322580644,
+  "unsupported_rate": 0.21212121212121213,
+  "refusal_when_absent": 0.9,
+  "refusal_when_present": 0.225,
+  "median_response_time": 1.4255
+}
