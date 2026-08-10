@@ -13,3 +13,4 @@ One line per experiment run. Added chronologically.
 | 2026-08-10 | Day 5 v1: initial baseline (bge-small + Qwen2.5-3B, k=5) | recall=77.5%, correct=61.5%, unsupp=39.3%, ref-abs=90%, ref-pres=35% |
 | 2026-08-10 | Day 5 v2: fixed parse_answer to strip trailing NOT_FOUND | recall=77.5%, unsupp=51.5% (worse due to more answers given), ref-pres=20% (better) |
 | 2026-08-10 | Day 5 v5: BASELINE - use all retrieved passages as citation | recall=77.5%, correct=50%, UNSUPP=21.2% (big win), ref-abs=95%, ref-pres=20%, time=1.13s |
+| 2026-08-10 | Day 6: config sweep (3 chunks × 3 k values = 9 configs) | WINNER chunk=400 k=5: unsupp=12.9% (was 21.2%), recall=80% (was 77.5%), correctness=51.7%, refuse-abs=90%, refuse-pres=27.5%, time=1.29s. Smaller chunks won because pandas parameter descriptions are short and distinct. |

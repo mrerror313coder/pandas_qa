@@ -1,0 +1,7 @@
+{
+  "chunk_size": 400,
+  "k": 5,
+  "index_dir": "data/index_400",
+  "passages_file": "data/passages_400.jsonl",
+  "notes": "Day 6 winner - unsupported=12.9%, recall=80%"
+}

@@ -1,0 +1,12 @@
+{
+  "questions_file": "data/questions/dev.jsonl",
+  "predictions_file": "results/sweep_chunk400_k3_preds.jsonl",
+  "n_questions": 60,
+  "n_predictions": 60,
+  "retrieval_recall": 0.625,
+  "answer_correctness": 0.4230769230769231,
+  "unsupported_rate": 0.18518518518518517,
+  "refusal_when_absent": 0.95,
+  "refusal_when_present": 0.35,
+  "median_response_time": 0.398
+}
