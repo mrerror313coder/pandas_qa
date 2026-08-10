@@ -1,18 +1,4 @@
-# pandas QA Project - Required Libraries
-# Install all with: pip install -r requirements.txt
-
-# Web scraping (Day 1)
-requests==2.31.0
-beautifulsoup4==4.12.2
-lxml==4.9.3
-
-# Embedding and vector search (Day 5)
+streamlit==1.28.0
 sentence-transformers==2.2.2
 faiss-cpu==1.7.4
-
-# Language model (Day 5)
-transformers==4.35.0
-torch==2.1.0
-
-# Utilities
-tqdm==4.66.1
+numpy<2.0
