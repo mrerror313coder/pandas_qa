@@ -40,7 +40,7 @@ hallucinate - it can only repeat what the documentation actually says.
 - [x] Day 5  - Baseline pipeline complete (unsupported=21%, recall=77.5%)
 - [x] Day 6  - Config study: chunk=400, k=5 wins (unsupp 21.2% → 12.9%)
 - [x] Day 7  - Tested bge-base & reranker - NONE beat Day 6 (domain mismatch documented)
-- [ ] Day 8  - Refusal cut-off chosen
+- [x] Day 8  - Refusal threshold=0.82 chosen (unsupp 12.9% -> 7.1%)
 - [ ] Day 9  - Failure analysis + final results
 - [ ] Day 10 - Report + demo recording
 

@@ -1,0 +1,9 @@
+{
+  "chosen_threshold": 0.8200000000000001,
+  "chosen_by": "constrained (refuse-abs >= 90%)",
+  "dev_refuse_absent": 0.95,
+  "dev_refuse_present": 0.325,
+  "dev_unsupported": 0.07142857142857142,
+  "dev_answered": 28,
+  "notes": "Chosen on dev set only, must not be re-tuned on heldback"
+}

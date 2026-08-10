@@ -1,7 +1,9 @@
 {
   "chunk_size": 400,
   "k": 5,
+  "embed_model": "BAAI/bge-small-en-v1.5",
   "index_dir": "data/index_400",
   "passages_file": "data/passages_400.jsonl",
-  "notes": "Day 6 winner - unsupported=12.9%, recall=80%"
+  "refusal_threshold": 0.82,
+  "notes": "Day 8 winner - chunk=400, k=5, threshold=0.82. Unsupported=7.1%"
 }

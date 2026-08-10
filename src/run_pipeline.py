@@ -52,7 +52,7 @@ def parse_answer(raw_answer):
     return text_stripped, cited, False
 
 
-def main(questions_path, output_path, k, index_dir, embed_model="BAAI/bge-small-en-v1.5"):
+def main(questions_path, output_path, k, index_dir, embed_model="BAAI/bge-small-en-v1.5", refusal_threshold=0.0):
     print("=" * 60)
     print("  Running QA Pipeline")
     print("=" * 60)
@@ -82,10 +82,16 @@ def main(questions_path, output_path, k, index_dir, embed_model="BAAI/bge-small-
         predicted_answer, cited_doc, refused = parse_answer(raw_answer)
         
         # ═══════════════════════════════════════════════════════════
-        # CITATION = ALL RETRIEVED PASSAGES COMBINED
-        # This reflects real grounding: the LLM saw all these passages
-        # so the answer is grounded in ANY of them, not just one.
+        # APPLY REFUSAL THRESHOLD (Day 8 addition)
+        # Force refusal if top passage score is below threshold
         # ═══════════════════════════════════════════════════════════
+        top_score = passages[0]["score"] if passages else 0.0
+        if refusal_threshold > 0 and top_score < refusal_threshold:
+            refused = True
+            predicted_answer = None
+            cited_doc = None
+        
+        # Citation: all retrieved passages combined
         if refused:
             cited_passage = None
         else:
@@ -136,7 +142,9 @@ if __name__ == "__main__":
     parser.add_argument("--output", required=True)
     parser.add_argument("--k", type=int, default=5)
     parser.add_argument("--index-dir", default="data/index")
+    parser.add_argument("--refusal-threshold", type=float, default=0.0,
+                        help="Force refusal if top passage score < threshold")
     parser.add_argument("--embed-model", default="BAAI/bge-small-en-v1.5")
     args = parser.parse_args()
     
-    main(args.questions, args.output, args.k, args.index_dir, args.embed_model)
+    main(args.questions, args.output, args.k, args.index_dir, args.embed_model, args.refusal_threshold)
