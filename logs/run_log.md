@@ -19,3 +19,5 @@ One line per experiment run. Added chronologically.
 | 2026-08-10 | Day 9 fix attempt: force-answer at score>=0.80 override | unsupp=26.2% (worse), refuse-abs=75% (worse), refuse-pres=7.5% (better). Trade-off unacceptable. REVERTED to Day 8. |
 | 2026-08-10 | Day 9 HELDBACK: v1 baseline (chunk=800, k=5, no threshold) | unsupp=15.6%, recall=72.5%, correct=31.2%, refuse-abs=100%, refuse-pres=20%, time=1.33s |
 | 2026-08-10 | Day 9 HELDBACK: FINAL pipeline (chunk=400, k=5, threshold=0.82) | unsupp=14.8%, recall=72.5%, correct=40.7%, refuse-abs=100%, refuse-pres=32.5%, time=0.53s |
+| 2026-08-10 | Day 10: wrote final report (~2000 words, ~6 pages), created demo script, demo notebook. Project complete. |
+| 2026-08-10 | Day 10: wrote final report (~2000 words, ~6 pages), created demo script, demo notebook. Project complete. |

@@ -42,7 +42,7 @@ hallucinate - it can only repeat what the documentation actually says.
 - [x] Day 7  - Tested bge-base & reranker - NONE beat Day 6 (domain mismatch documented)
 - [x] Day 8  - Refusal threshold=0.82 chosen (unsupp 12.9% -> 7.1%)
 - [x] Day 9  - Failure analysis done, heldback scored (unsupp=14.8%, refuse-abs=100%)
-- [ ] Day 10 - Report + demo recording
+- [x] Day 10 - Report written, demo script prepared - PROJECT COMPLETE
 
 ---
 
