@@ -1,5 +1,5 @@
 """
-streamlit_app.py - Retrieval-only demo for Streamlit Cloud
+streamlit_app.py - Retrieval-only demo (shows top-3 for full context)
 """
 
 import streamlit as st
@@ -8,7 +8,6 @@ import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
 
-# Page config
 st.set_page_config(
     page_title="Pandas Docs Assistant",
     page_icon="📊",
@@ -16,23 +15,18 @@ st.set_page_config(
 )
 
 
-# Cache the model + index loading
 @st.cache_resource
 def load_system():
     index = faiss.read_index("data/index_400/passages.faiss")
-    
     meta = []
     with open("data/index_400/passages.meta.jsonl") as f:
         for line in f:
             meta.append(json.loads(line))
-    
     model = SentenceTransformer("BAAI/bge-small-en-v1.5")
-    
     return index, meta, model
 
 
-# ── UI ──────────────────────────────────────────────────────
-st.title("📊 Pandas QA — Anti-Hallucination Documentation Assistant")
+st.title("📊 Pandas Docs Assistant")
 
 st.markdown(
     "Ask any question about the **pandas library**. This system searches only from "
@@ -40,7 +34,6 @@ st.markdown(
     "good match, it **refuses** instead of hallucinating."
 )
 
-# Load system (cached)
 with st.spinner("Loading retrieval index (first load ~30s)..."):
     index, meta, model = load_system()
 
@@ -48,15 +41,14 @@ st.success("Loaded " + str(index.ntotal) + " passages from pandas docs")
 
 REFUSAL_THRESHOLD = 0.82
 
-# Question input
 question = st.text_input(
     "Your Question:",
     placeholder="e.g., What does the how parameter do in DataFrame.merge?"
 )
 
-k = st.slider("Number of passages to retrieve:", 1, 10, 5)
+k = 5  # fixed for simplicity
 
-# Handle example click via query param
+# Handle example click
 query_params = st.query_params
 if "q" in query_params and not question:
     question = query_params["q"]
@@ -76,23 +68,49 @@ if st.button("Ask", type="primary") or question:
                 "**REFUSED** — Answer not found in pandas documentation.\n\n"
                 "**Reason:** Top retrieval score (" + str(round(top_score, 3)) + 
                 ") is below our confidence threshold (" + str(REFUSAL_THRESHOLD) + ").\n\n"
-                "The docs likely do not contain a direct answer to this question. "
+                "The docs do not contain a direct answer to this question. "
                 "The system refuses instead of making up an answer."
             )
         else:
-            top_passage = meta[indices[0][0]]
+            # Group top passages by doc_name
+            doc_passages = {}
+            for i in range(k):
+                p = meta[indices[0][i]]
+                s = float(scores[0][i])
+                doc = p["doc_name"]
+                if doc not in doc_passages:
+                    doc_passages[doc] = {
+                        "top_score": s,
+                        "sections": []
+                    }
+                doc_passages[doc]["sections"].append({
+                    "section": p["section"],
+                    "text": p["text"],
+                    "score": s
+                })
             
+            # Show top doc(s) with all their retrieved sections
             st.success(
-                "**Answer found!**\n\n" +
-                "**Source:** " + top_passage["doc_name"] + " (" + top_passage["section"] + ")\n\n" +
-                "**Confidence:** " + str(round(top_score, 3))
+                "**Answer found!** Confidence: " + str(round(top_score, 3))
             )
             
-            st.markdown("### 📖 Relevant documentation:")
-            st.code(top_passage["text"], language=None)
+            for doc_name, info in list(doc_passages.items())[:2]:
+                st.markdown("---")
+                st.markdown("## 📖 " + doc_name)
+                
+                # Sort sections in logical order: description, signature, parameters, examples
+                order = {"description": 0, "signature": 1, "parameters": 2, "examples": 3}
+                sorted_sections = sorted(
+                    info["sections"], 
+                    key=lambda x: order.get(x["section"], 99)
+                )
+                
+                for sec in sorted_sections:
+                    st.markdown("**" + sec["section"].upper() + "** (relevance: " + str(round(sec["score"], 3)) + ")")
+                    st.code(sec["text"], language=None)
         
         # Show all retrieved passages
-        with st.expander("🔍 View all " + str(k) + " retrieved passages", expanded=False):
+        with st.expander("🔍 Raw retrieval details (all " + str(k) + " passages)", expanded=False):
             for i in range(k):
                 p = meta[indices[0][i]]
                 s = float(scores[0][i])
@@ -107,9 +125,11 @@ st.markdown("### Try these examples:")
 
 examples = [
     "What does the 'how' parameter do in DataFrame.merge?",
+    "What does DataFrame.melt do?",
     "What is the default sorting algorithm in DataFrame.sort_values?",
     "How do I use pandas to compute matrix eigenvalues?",
     "What does the 'optimize' parameter do in DataFrame.merge?",
+    "How do you use DataFrame.append() to add rows?",
 ]
 
 cols = st.columns(2)
@@ -127,6 +147,8 @@ st.markdown(
     "- **Retriever:** BAAI/bge-small-en-v1.5\n"
     "- **Refusal threshold:** 0.82 (chosen on dev set)\n"
     "- **Heldback results:** 100% correct refusal on 20 unanswerable questions\n\n"
+    "*Note: This is the retrieval-only demo. The full pipeline includes "
+    "Qwen 2.5 3B LLM for natural-language answer generation.*\n\n"
     "Built for CAID internship at Namal University Mianwali by Muhammad Asad.\n\n"
     "[GitHub Repository](https://github.com/mrerror313coder/pandas_qa)"
 )
