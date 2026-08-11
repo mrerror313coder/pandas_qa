@@ -1,6 +1,6 @@
 """
 streamlit_app.py - CPU-Optimized for Free Tier
-Uses a tiny model that actually fits in 1GB RAM
+Uses Qwen2.5-0.5B-Instruct (Tiny, Fast, Causal Model)
 """
 
 import time
@@ -21,8 +21,9 @@ st.set_page_config(
     layout="wide",
 )
 
-# CRITICAL: Use a tiny model that fits in 1GB RAM
-GEN_MODEL_NAME = "google/flan-t5-small"  # Only ~250MB, runs fast on CPU
+# CRITICAL: Use a tiny causal model that fits in 1GB RAM
+# Qwen2.5-0.5B is ~500MB and works great on CPU
+GEN_MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
 REFUSAL_THRESHOLD = 0.82
 K = 5
 DEVICE = "cpu"
@@ -65,13 +66,13 @@ def load_retrieval_system():
 
 @st.cache_resource
 def load_generator():
-    """Loads a tiny LLM that fits in free tier RAM."""
+    """Loads a tiny causal LLM that fits in free tier RAM."""
     try:
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
+        tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME, trust_remote_code=True)
         
         # Force CPU and use float32
         model = AutoModelForCausalLM.from_pretrained(
@@ -79,6 +80,7 @@ def load_generator():
             torch_dtype=torch.float32,
             device_map="cpu",  # Explicitly force CPU
             low_cpu_mem_usage=True,
+            trust_remote_code=True
         )
         model.eval()
         return tokenizer, model
@@ -116,8 +118,11 @@ def generate(question, passages, tokenizer, model, max_new_tokens=150):
     passages_str = format_passages(passages)
     prompt = PROMPT_TEMPLATE.format(passages=passages_str, question=question)
     
-    # Flan-T5 doesn't use chat templates the same way
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
+    # Apply chat template for Qwen
+    messages = [{"role": "user", "content": prompt}]
+    input_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+    inputs = tokenizer(input_text, return_tensors="pt", truncation=True, max_length=1024)
     inputs = {k: v.to("cpu") for k, v in inputs.items()}
 
     with torch.no_grad():
@@ -134,7 +139,7 @@ def generate(question, passages, tokenizer, model, max_new_tokens=150):
 
 
 st.title("📊 Pandas Docs Assistant")
-st.markdown("Ask questions about the pandas library. (Running on CPU with a tiny model)")
+st.markdown("Ask questions about the pandas library. (Running on CPU with Qwen2.5-0.5B)")
 
 # Load Retriever
 if "retrieval_loaded" not in st.session_state:
@@ -157,7 +162,7 @@ if not st.session_state.get("retrieval_loaded"):
 # Load Generator
 def get_generator():
     if "generator_loaded" not in st.session_state:
-        st.info("Loading tiny AI model... (10-20s on CPU)")
+        st.info("Loading tiny AI model (Qwen2.5-0.5B)... (10-20s on CPU)")
         tokenizer, model = load_generator()
         if tokenizer:
             st.session_state["generator_loaded"] = True
@@ -169,7 +174,7 @@ def get_generator():
             st.session_state["generator_loaded"] = False
     return st.session_state.get("tokenizer"), st.session_state.get("gen_model"), st.session_state.get("generator_loaded", False)
 
-question = st.text_input("Your Question:", placeholder="e.g., How to merge DataFrames?")
+question = st.text_input("Your Question:", placeholder="e.g., What is the task of read_csv?")
 ask_clicked = st.button("Ask", type="primary")
 
 if ask_clicked and question:
@@ -203,4 +208,4 @@ if ask_clicked and question:
             st.code(f"Source: {p['doc_name']}\nScore: {p['score']:.3f}\n\n{p['text']}")
 
 st.markdown("---")
-st.caption("Built with Streamlit. Running on CPU with Flan-T5-Small.")
+st.caption("Built with Streamlit. Running on CPU with Qwen2.5-0.5B-Instruct.")
