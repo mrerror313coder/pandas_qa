@@ -1,6 +1,6 @@
 """
-streamlit_app.py - CPU-Optimized for Free Tier
-Uses Qwen2.5-0.5B-Instruct (Tiny, Fast, Causal Model)
+streamlit_app.py - Ultra-Lightweight CPU Version
+Uses SmolLM2-360M-Instruct (360MB, fits in 1GB RAM)
 """
 
 import time
@@ -21,9 +21,8 @@ st.set_page_config(
     layout="wide",
 )
 
-# CRITICAL: Use a tiny causal model that fits in 1GB RAM
-# Qwen2.5-0.5B is ~500MB and works great on CPU
-GEN_MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
+# ULTRA-TINY MODEL: 360MB, fits easily in free tier RAM
+GEN_MODEL_NAME = "HuggingFaceTB/SmolLM2-360M-Instruct"
 REFUSAL_THRESHOLD = 0.82
 K = 5
 DEVICE = "cpu"
@@ -66,26 +65,28 @@ def load_retrieval_system():
 
 @st.cache_resource
 def load_generator():
-    """Loads a tiny causal LLM that fits in free tier RAM."""
+    """Loads the ultra-tiny SmolLM2 model."""
     try:
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME, trust_remote_code=True)
+        st.info(f"Loading {GEN_MODEL_NAME}... (this takes ~15s on CPU)")
         
-        # Force CPU and use float32
+        tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
+        
+        # Force CPU, float32, and low memory usage
         model = AutoModelForCausalLM.from_pretrained(
             GEN_MODEL_NAME,
             torch_dtype=torch.float32,
-            device_map="cpu",  # Explicitly force CPU
+            device_map="cpu",
             low_cpu_mem_usage=True,
-            trust_remote_code=True
         )
         model.eval()
         return tokenizer, model
     except Exception as e:
         st.error(f"Failed to load model: {e}")
+        st.exception(e)  # Show the full error
         return None, None
 
 
@@ -118,7 +119,7 @@ def generate(question, passages, tokenizer, model, max_new_tokens=150):
     passages_str = format_passages(passages)
     prompt = PROMPT_TEMPLATE.format(passages=passages_str, question=question)
     
-    # Apply chat template for Qwen
+    # SmolLM2 uses standard chat template
     messages = [{"role": "user", "content": prompt}]
     input_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
@@ -139,7 +140,7 @@ def generate(question, passages, tokenizer, model, max_new_tokens=150):
 
 
 st.title("📊 Pandas Docs Assistant")
-st.markdown("Ask questions about the pandas library. (Running on CPU with Qwen2.5-0.5B)")
+st.markdown("Ask questions about the pandas library. (Running on CPU with SmolLM2-360M)")
 
 # Load Retriever
 if "retrieval_loaded" not in st.session_state:
@@ -162,19 +163,18 @@ if not st.session_state.get("retrieval_loaded"):
 # Load Generator
 def get_generator():
     if "generator_loaded" not in st.session_state:
-        st.info("Loading tiny AI model (Qwen2.5-0.5B)... (10-20s on CPU)")
         tokenizer, model = load_generator()
         if tokenizer:
             st.session_state["generator_loaded"] = True
             st.session_state["tokenizer"] = tokenizer
             st.session_state["gen_model"] = model
-            st.success("Model loaded!")
+            st.success("Model loaded successfully!")
         else:
-            st.error("Model failed to load.")
+            st.error("Model failed to load. Check logs above.")
             st.session_state["generator_loaded"] = False
     return st.session_state.get("tokenizer"), st.session_state.get("gen_model"), st.session_state.get("generator_loaded", False)
 
-question = st.text_input("Your Question:", placeholder="e.g., What is the task of read_csv?")
+question = st.text_input("Your Question:", placeholder="e.g., What is the use of read_csv?")
 ask_clicked = st.button("Ask", type="primary")
 
 if ask_clicked and question:
@@ -200,12 +200,13 @@ if ask_clicked and question:
                             st.caption(f"Confidence: {top_score:.3f}")
                     except Exception as e:
                         st.error(f"Generation error: {e}")
+                        st.exception(e)
             else:
-                st.error("Model not ready.")
+                st.error("Model not ready. Check error messages above.")
 
     with st.expander("🔍 Retrieved Passages"):
         for p in passages:
             st.code(f"Source: {p['doc_name']}\nScore: {p['score']:.3f}\n\n{p['text']}")
 
 st.markdown("---")
-st.caption("Built with Streamlit. Running on CPU with Qwen2.5-0.5B-Instruct.")
+st.caption("Built with Streamlit. Running on CPU with HuggingFace SmolLM2-360M-Instruct.")
