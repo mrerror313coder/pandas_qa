@@ -1,13 +1,13 @@
 """
-streamlit_app.py - Final Optimized Version
-Runs on CPU with HuggingFace SmolLM2-360M-Instruct
-Shows direct answers with source citations
+streamlit_app.py - Fixed Version for Direct Answer Display
+Uses SmolLM2-360M with simplified prompting
 """
 
 import time
 import json
 import os
 import gc
+import re
 
 import numpy as np
 import streamlit as st
@@ -28,24 +28,16 @@ REFUSAL_THRESHOLD = 0.82
 K = 5
 DEVICE = "cpu"
 
-# Updated Prompt Template to ensure direct answer first
-PROMPT_TEMPLATE = """You are a documentation assistant for the pandas library. 
+# SIMPLIFIED PROMPT - Direct instruction
+PROMPT_TEMPLATE = """Answer the question using ONLY the text below.
+If you don't know, say "NOT_FOUND".
 
-TASK: Answer the user's question using ONLY the provided passages.
-
-RULES:
-1. If the passages contain the answer, write a clear, direct answer (1-2 sentences) FIRST.
-2. Immediately after the answer, add a new line and write: "Source: <doc_name>"
-3. If the passages do NOT contain the answer, write ONLY: "NOT_FOUND"
-4. Do not invent any information.
-
-Passages:
+Text:
 {passages}
 
 Question: {question}
 
 Answer:"""
-
 
 @st.cache_resource
 def load_retrieval_system():
@@ -114,19 +106,17 @@ def retrieve(question, index, meta, embed_model, k=K):
 
 def format_passages(passages):
     return "\n\n".join([
-        f"[Passage {i}] doc_name: {p['doc_name']} | section: {p['section']}\n{p['text']}"
-        for i, p in enumerate(passages, 1)
+        f"[{p['doc_name']}] {p['text']}"
+        for p in passages
     ])
 
 
-def generate(question, passages, tokenizer, model, max_new_tokens=150):
+def generate(question, passages, tokenizer, model, max_new_tokens=200):
     passages_str = format_passages(passages)
     prompt = PROMPT_TEMPLATE.format(passages=passages_str, question=question)
     
-    messages = [{"role": "user", "content": prompt}]
-    input_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-
-    inputs = tokenizer(input_text, return_tensors="pt", truncation=True, max_length=1024)
+    # Use simple text generation without chat template for better control
+    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
     inputs = {k: v.to("cpu") for k, v in inputs.items()}
 
     with torch.no_grad():
@@ -134,23 +124,31 @@ def generate(question, passages, tokenizer, model, max_new_tokens=150):
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=False,
-            temperature=0.7,
+            temperature=0.1, # Lower temperature for more deterministic output
             pad_token_id=tokenizer.eos_token_id,
+            eos_token_id=tokenizer.eos_token_id,
         )
 
     generated = output[0][inputs["input_ids"].shape[1]:]
     raw_answer = tokenizer.decode(generated, skip_special_tokens=True).strip()
     
-    # Parse the answer to separate the text and source
-    if "Source:" in raw_answer:
-        parts = raw_answer.split("Source:", 1)
-        answer_text = parts[0].strip()
-        source_text = parts[1].strip()
-        return answer_text, source_text
-    elif raw_answer.upper() == "NOT_FOUND":
+    # Robust parsing logic
+    # Check if the answer is just "NOT_FOUND"
+    if "NOT_FOUND" in raw_answer.upper():
         return "NOT_FOUND", None
-    else:
-        return raw_answer, None
+    
+    # Try to extract source if mentioned (e.g., "Source: pandas.read_csv")
+    source_match = re.search(r"Source:\s*(\S+)", raw_answer, re.IGNORECASE)
+    source_text = source_match.group(1) if source_match else None
+    
+    # Clean up the answer text (remove "Source: ..." part if present)
+    answer_text = re.sub(r"\s*Source:\s*\S+", "", raw_answer, flags=re.IGNORECASE).strip()
+    
+    # If answer is empty after cleaning, return the raw answer
+    if not answer_text:
+        answer_text = raw_answer
+        
+    return answer_text, source_text
 
 
 # --- UI Layout ---
@@ -257,6 +255,10 @@ if ask_clicked and question:
                     try:
                         answer_text, source_text = generate(question, passages, tokenizer, model)
                         
+                        # Debug: Show raw output in expander if needed
+                        # with st.expander("Debug: Raw Model Output"):
+                        #     st.text(raw_output)
+                        
                         if answer_text.upper() == "NOT_FOUND":
                             st.error(
                                 "**REFUSED**: The model determined the retrieved passages do not contain the answer."
@@ -271,7 +273,6 @@ if ask_clicked and question:
                             
                             # Display Confidence and Timing
                             st.caption(f"🎯 Retrieval Confidence: {top_score:.3f} (above {REFUSAL_THRESHOLD} threshold)")
-                            st.caption(f"⏱️ Response Time: Calculated in real-time")
                             
                             # Store for session state
                             st.session_state["answer_displayed"] = True
@@ -296,6 +297,6 @@ st.markdown(
     "- **Retriever:** BAAI/bge-small-en-v1.5\n"
     "- **Generator:** HuggingFace **SmolLM2-360M-Instruct** (CPU-optimized)\n"
     "- **Goal:** Zero hallucinations — refuses if answer not found in docs.\n\n"
-    "Built for CAID internship at Namal University Mianwali by Muhammad Asad.\n\n"
+    "Built for CAID internship at Namal University Mianwali by Muhammad Asad Riaz.\n\n"
     "[GitHub Repository](https://github.com/mrerror313coder/pandas_qa)"
 )
