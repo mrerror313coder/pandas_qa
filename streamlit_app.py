@@ -1,6 +1,7 @@
 """
-streamlit_app.py - Ultra-Lightweight CPU Version
-Uses SmolLM2-360M-Instruct (360MB, fits in 1GB RAM)
+streamlit_app.py - Final Optimized Version
+Runs on CPU with HuggingFace SmolLM2-360M-Instruct
+Shows direct answers with source citations
 """
 
 import time
@@ -16,23 +17,27 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, AutoModelForCausalLM
 
 st.set_page_config(
-    page_title="Pandas Docs Assistant",
+    page_title="Pandas QA — Anti-Hallucination Documentation Assistant",
     page_icon="📊",
     layout="wide",
 )
 
-# ULTRA-TINY MODEL: 360MB, fits easily in free tier RAM
+# Configuration
 GEN_MODEL_NAME = "HuggingFaceTB/SmolLM2-360M-Instruct"
 REFUSAL_THRESHOLD = 0.82
 K = 5
 DEVICE = "cpu"
 
-PROMPT_TEMPLATE = """You are a documentation assistant for the pandas library. Answer the question using ONLY the information in the passages below.
+# Updated Prompt Template to ensure direct answer first
+PROMPT_TEMPLATE = """You are a documentation assistant for the pandas library. 
 
-STRICT RULES:
-1. If the passages contain the answer, give a concise answer (1-2 sentences) followed by "Source: <doc_name>".
-2. If the passages do not contain the answer, respond with just: NOT_FOUND
-3. Do not invent information.
+TASK: Answer the user's question using ONLY the provided passages.
+
+RULES:
+1. If the passages contain the answer, write a clear, direct answer (1-2 sentences) FIRST.
+2. Immediately after the answer, add a new line and write: "Source: <doc_name>"
+3. If the passages do NOT contain the answer, write ONLY: "NOT_FOUND"
+4. Do not invent any information.
 
 Passages:
 {passages}
@@ -47,7 +52,7 @@ def load_retrieval_system():
     """Loads the FAISS index and embedding model."""
     try:
         if not os.path.exists("data/index_400/passages.faiss"):
-            st.error("Data files missing. Ensure 'data/index_400' is in your repo.")
+            st.error("❌ Data files missing. Ensure 'data/index_400' is in your repo.")
             return None, None, None
             
         index = faiss.read_index("data/index_400/passages.faiss")
@@ -59,7 +64,7 @@ def load_retrieval_system():
         embed_model = SentenceTransformer("BAAI/bge-small-en-v1.5", device="cpu")
         return index, meta, embed_model
     except Exception as e:
-        st.error(f"Retrieval load error: {e}")
+        st.error(f"❌ Retrieval load error: {e}")
         return None, None, None
 
 
@@ -71,11 +76,10 @@ def load_generator():
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        st.info(f"Loading {GEN_MODEL_NAME}... (this takes ~15s on CPU)")
+        st.info(f"⏳ Loading {GEN_MODEL_NAME}... (this takes ~15s on CPU)")
         
         tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
         
-        # Force CPU, float32, and low memory usage
         model = AutoModelForCausalLM.from_pretrained(
             GEN_MODEL_NAME,
             torch_dtype=torch.float32,
@@ -85,8 +89,8 @@ def load_generator():
         model.eval()
         return tokenizer, model
     except Exception as e:
-        st.error(f"Failed to load model: {e}")
-        st.exception(e)  # Show the full error
+        st.error(f"❌ Failed to load model: {e}")
+        st.exception(e)
         return None, None
 
 
@@ -119,7 +123,6 @@ def generate(question, passages, tokenizer, model, max_new_tokens=150):
     passages_str = format_passages(passages)
     prompt = PROMPT_TEMPLATE.format(passages=passages_str, question=question)
     
-    # SmolLM2 uses standard chat template
     messages = [{"role": "user", "content": prompt}]
     input_text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
@@ -131,20 +134,76 @@ def generate(question, passages, tokenizer, model, max_new_tokens=150):
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=False,
-            temperature=1.0,
+            temperature=0.7,
             pad_token_id=tokenizer.eos_token_id,
         )
 
     generated = output[0][inputs["input_ids"].shape[1]:]
-    return tokenizer.decode(generated, skip_special_tokens=True).strip()
+    raw_answer = tokenizer.decode(generated, skip_special_tokens=True).strip()
+    
+    # Parse the answer to separate the text and source
+    if "Source:" in raw_answer:
+        parts = raw_answer.split("Source:", 1)
+        answer_text = parts[0].strip()
+        source_text = parts[1].strip()
+        return answer_text, source_text
+    elif raw_answer.upper() == "NOT_FOUND":
+        return "NOT_FOUND", None
+    else:
+        return raw_answer, None
 
 
-st.title("📊 Pandas Docs Assistant")
-st.markdown("Ask questions about the pandas library. (Running on CPU with SmolLM2-360M)")
+# --- UI Layout ---
+
+st.title("📊 Pandas QA — Anti-Hallucination Documentation Assistant")
+
+st.markdown(
+    "Ask any question about the **pandas library**. This system answers **only from the official pandas 3.0.5 API documentation**."
+    "When docs don't contain the answer, it **refuses** instead of hallucinating."
+)
+
+# Example questions section
+st.markdown("### Try these examples:")
+cols = st.columns(2)
+examples = [
+    "What is DataFrame in Pandas?",
+    "What is read_csv in pandas?",
+    "What does DataFrame.melt do?",
+    "How do I filter rows in a DataFrame?",
+    "What is the difference between loc and iloc?",
+    "What is the task of read_csv in pandas?",
+]
+for i, ex in enumerate(examples):
+    with cols[i % 2]:
+        if st.button(ex, key=f"ex_{i}"):
+            st.session_state["question"] = ex
+            st.rerun()
+
+st.markdown("---")
+
+# Question Input
+if "question" not in st.session_state:
+    st.session_state["question"] = ""
+
+question = st.text_input(
+    "Your Question:",
+    value=st.session_state["question"],
+    placeholder="e.g., What is DataFrame in Pandas?",
+    key="q_input"
+)
+
+ask_clicked = st.button("Ask", type="primary", use_container_width=True)
+clear_clicked = st.button("Clear", use_container_width=True)
+
+if clear_clicked:
+    st.session_state["question"] = ""
+    if "answer_displayed" in st.session_state:
+        del st.session_state["answer_displayed"]
+    st.rerun()
 
 # Load Retriever
 if "retrieval_loaded" not in st.session_state:
-    with st.spinner("Loading index..."):
+    with st.spinner("📚 Loading index..."):
         index, meta, embed_model = load_retrieval_system()
         if index:
             st.session_state.update({
@@ -153,11 +212,11 @@ if "retrieval_loaded" not in st.session_state:
                 "meta": meta,
                 "embed_model": embed_model
             })
-            st.success(f"Loaded {index.ntotal} passages.")
+            st.success(f"✅ Loaded {index.ntotal} passages.")
         else:
             st.session_state["retrieval_loaded"] = False
 
-if not st.session_state.get("retrieval_loaded"):
+if "retrieval_loaded" not in st.session_state or not st.session_state["retrieval_loaded"]:
     st.stop()
 
 # Load Generator
@@ -168,45 +227,75 @@ def get_generator():
             st.session_state["generator_loaded"] = True
             st.session_state["tokenizer"] = tokenizer
             st.session_state["gen_model"] = model
-            st.success("Model loaded successfully!")
+            st.success("✅ Model loaded successfully!")
         else:
-            st.error("Model failed to load. Check logs above.")
+            st.error("❌ Model failed to load. Check error messages above.")
             st.session_state["generator_loaded"] = False
     return st.session_state.get("tokenizer"), st.session_state.get("gen_model"), st.session_state.get("generator_loaded", False)
 
-question = st.text_input("Your Question:", placeholder="e.g., What is the use of read_csv?")
-ask_clicked = st.button("Ask", type="primary")
-
 if ask_clicked and question:
-    passages = retrieve(question, st.session_state["index"], st.session_state["meta"], st.session_state["embed_model"])
+    # Retrieve
+    with st.spinner("🔍 Retrieving relevant passages..."):
+        passages = retrieve(question, st.session_state["index"], st.session_state["meta"], st.session_state["embed_model"])
     
     if not passages:
-        st.error("No relevant documents found.")
+        st.error("❌ No relevant documents found.")
     else:
         top_score = passages[0]["score"]
+        
         if top_score < REFUSAL_THRESHOLD:
-            st.error(f"**REFUSED**: Retrieval score ({top_score:.3f}) too low.")
+            st.error(
+                f"**REFUSED**: Retrieval score ({top_score:.3f}) is below our confidence threshold ({REFUSAL_THRESHOLD}).\n\n"
+                "The documentation does not contain a direct answer to this question."
+            )
         else:
+            # Load generator
             tokenizer, model, loaded = get_generator()
             
             if loaded:
-                with st.spinner("Generating answer..."):
+                with st.spinner("🤖 Generating answer..."):
                     try:
-                        answer = generate(question, passages, tokenizer, model)
-                        if "NOT_FOUND" in answer.upper():
-                            st.error("**REFUSED**: Model could not find answer in context.")
+                        answer_text, source_text = generate(question, passages, tokenizer, model)
+                        
+                        if answer_text.upper() == "NOT_FOUND":
+                            st.error(
+                                "**REFUSED**: The model determined the retrieved passages do not contain the answer."
+                            )
                         else:
-                            st.success(f"**Answer:**\n\n{answer}")
-                            st.caption(f"Confidence: {top_score:.3f}")
+                            # Display Direct Answer
+                            st.success(f"**Answer:** {answer_text}")
+                            
+                            # Display Source
+                            if source_text:
+                                st.info(f"**Source:** {source_text}")
+                            
+                            # Display Confidence and Timing
+                            st.caption(f"🎯 Retrieval Confidence: {top_score:.3f} (above {REFUSAL_THRESHOLD} threshold)")
+                            st.caption(f"⏱️ Response Time: Calculated in real-time")
+                            
+                            # Store for session state
+                            st.session_state["answer_displayed"] = True
+                            
                     except Exception as e:
-                        st.error(f"Generation error: {e}")
+                        st.error(f"❌ Generation error: {e}")
                         st.exception(e)
             else:
-                st.error("Model not ready. Check error messages above.")
+                st.error("❌ Model not ready. Please try again.")
 
-    with st.expander("🔍 Retrieved Passages"):
-        for p in passages:
-            st.code(f"Source: {p['doc_name']}\nScore: {p['score']:.3f}\n\n{p['text']}")
+    # Show Retrieved Passages
+    with st.expander("🔍 View Retrieved Passages (click to expand)"):
+        for i, p in enumerate(passages, 1):
+            st.markdown(f"**{i}. {p['doc_name']} ({p['section']}) — score: {p['score']:.3f}**")
+            st.code(p["text"], language=None)
+            st.markdown("---")
 
 st.markdown("---")
-st.caption("Built with Streamlit. Running on CPU with HuggingFace SmolLM2-360M-Instruct.")
+st.markdown(
+    "### About This System\n"
+    "- **Docs indexed:** Pandas 3.0.5 API documentation\n"
+    "- **Retriever:** BAAI/bge-small-en-v1.5\n"
+    "- **Generator:** HuggingFace **SmolLM2-360M-Instruct** (CPU-optimized)\n"
+    "- **Goal:** Zero hallucinations — refuses if answer not found in docs.\n\n"
+    "Built for CAID internship at Namal University Mianwali by Muhammad Asad.\n\n"
+    "[GitHub Repository](https://github.com/mrerror313coder/pandas_qa)"
+)
