@@ -1,10 +1,11 @@
 """
-streamlit_app.py - Full pipeline (retrieval + grounded generation)
-Matches src/retrieve.py + src/generate.py logic.
+streamlit_app.py - Optimized for Streamlit Cloud Free Tier (CPU Only)
 """
 
 import time
 import json
+import os
+import sys
 
 import numpy as np
 import streamlit as st
@@ -19,9 +20,13 @@ st.set_page_config(
     layout="wide",
 )
 
+# Configuration
 GEN_MODEL_NAME = "Qwen/Qwen2.5-3B-Instruct"
 REFUSAL_THRESHOLD = 0.82
 K = 5
+
+# Force CPU usage to prevent CUDA errors on free tier
+DEVICE = "cpu"
 
 PROMPT_TEMPLATE = """You are a documentation assistant for the pandas library. Answer the question using ONLY the information in the passages below.
 
@@ -41,55 +46,71 @@ Answer:"""
 
 @st.cache_resource
 def load_retrieval_system():
-    index = faiss.read_index("data/index_400/passages.faiss")
-    meta = []
-    with open("data/index_400/passages.meta.jsonl") as f:
-        for line in f:
-            meta.append(json.loads(line))
-    embed_model = SentenceTransformer("BAAI/bge-small-en-v1.5")
-    return index, meta, embed_model
+    """Loads the FAISS index and embedding model."""
+    try:
+        # Check if data exists
+        if not os.path.exists("data/index_400/passages.faiss"):
+            st.error("Data files not found. Please ensure 'data/index_400' is uploaded to your repo.")
+            return None, None, None
+            
+        index = faiss.read_index("data/index_400/passages.faiss")
+        meta = []
+        with open("data/index_400/passages.meta.jsonl") as f:
+            for line in f:
+                meta.append(json.loads(line))
+        
+        # Use CPU-only embedding model
+        embed_model = SentenceTransformer("BAAI/bge-small-en-v1.5", device="cpu")
+        return index, meta, embed_model
+    except Exception as e:
+        st.error(f"Failed to load retrieval system: {e}")
+        return None, None, None
 
 
 @st.cache_resource
 def load_generator():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
-
-    if device == "cuda":
-        # device_map only accepts "auto"/"balanced"/"sequential"/a dict -
-        # a bare "cuda" string works here because HF special-cases it,
-        # but "cpu" does not, so we branch instead of passing device
-        # straight through.
+    """Loads the LLM. Optimized for CPU."""
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
+        
+        # Explicitly force CPU and float32 for stability on free tier
+        # device_map="auto" handles layer distribution if memory allows
         model = AutoModelForCausalLM.from_pretrained(
             GEN_MODEL_NAME,
-            torch_dtype=torch.float16,
-            device_map="auto",
+            torch_dtype=torch.float32, # CPU works best with float32
+            device_map="auto",         # Automatically splits layers if possible
+            low_cpu_mem_usage=True,    # Critical for free tier
         )
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            GEN_MODEL_NAME,
-            torch_dtype=torch.float32,
-        ).to(device)
-
-    model.eval()
-    return tokenizer, model, device
+        
+        model.eval()
+        return tokenizer, model
+    except Exception as e:
+        st.error(f"Failed to load generator model: {e}")
+        st.warning("The model is too large for the free tier resources. Consider using a smaller model like 'Qwen/Qwen2.5-1.5B-Instruct' or upgrading to a paid tier with GPU.")
+        return None, None
 
 
 def retrieve(question, index, meta, embed_model, k=K):
+    if index is None or embed_model is None:
+        return []
+        
     q_embedding = embed_model.encode(
         [question],
         normalize_embeddings=True,
     ).astype(np.float32)
+    
     scores, indices = index.search(q_embedding, k)
     passages = []
     for i in range(k):
-        p = meta[indices[0][i]]
-        passages.append({
-            "doc_name": p["doc_name"],
-            "section": p["section"],
-            "text": p["text"],
-            "score": float(scores[0][i]),
-        })
+        # Safety check for index bounds
+        if indices[0][i] < len(meta):
+            p = meta[indices[0][i]]
+            passages.append({
+                "doc_name": p["doc_name"],
+                "section": p["section"],
+                "text": p["text"],
+                "score": float(scores[0][i]),
+            })
     return passages
 
 
@@ -103,7 +124,7 @@ def format_passages(passages):
     return "\n\n".join(formatted)
 
 
-def generate(question, passages, tokenizer, model, device, max_new_tokens=200):
+def generate(question, passages, tokenizer, model, max_new_tokens=200):
     passages_str = format_passages(passages)
     prompt = PROMPT_TEMPLATE.format(passages=passages_str, question=question)
 
@@ -117,7 +138,10 @@ def generate(question, passages, tokenizer, model, device, max_new_tokens=200):
         return_tensors="pt",
         truncation=True,
         max_length=3500,
-    ).to(device)
+    )
+    
+    # Ensure inputs are on CPU
+    inputs = {k: v.to("cpu") for k, v in inputs.items()}
 
     with torch.no_grad():
         output = model.generate(
@@ -137,14 +161,26 @@ st.title("📊 Pandas Docs Assistant")
 
 st.markdown(
     "Ask any question about the **pandas library**. This system answers only from "
-    "the official pandas 3.0.5 API documentation and cites its source. When the "
-    "docs do not contain a good match, it **refuses** instead of hallucinating."
+    "the official pandas 3.0.5 API documentation and cites its source."
 )
 
-with st.spinner("Loading retrieval index (first load ~30s)..."):
-    index, meta, embed_model = load_retrieval_system()
+# Initialize session state
+if "retrieval_loaded" not in st.session_state:
+    with st.spinner("Loading retrieval index (this may take a moment)..."):
+        index, meta, embed_model = load_retrieval_system()
+        if index is not None:
+            st.session_state["retrieval_loaded"] = True
+            st.session_state["index"] = index
+            st.session_state["meta"] = meta
+            st.session_state["embed_model"] = embed_model
+            st.success(f"Loaded {index.ntotal} passages from pandas docs")
+        else:
+            st.session_state["retrieval_loaded"] = False
 
-st.success("Loaded " + str(index.ntotal) + " passages from pandas docs")
+# Check if retrieval loaded successfully
+if not st.session_state.get("retrieval_loaded", False):
+    st.error("Retrieval system failed to load. Check logs for details.")
+    st.stop()
 
 question = st.text_input(
     "Your Question:",
@@ -157,54 +193,72 @@ examples = [
     "What does DataFrame.melt do?",
     "What is the default sorting algorithm in DataFrame.sort_values?",
     "How do I use pandas to compute matrix eigenvalues?",
-    "What does the 'optimize' parameter do in DataFrame.merge?",
-    "How do you use DataFrame.append() to add rows?",
 ]
 
 ask_clicked = st.button("Ask", type="primary")
 
 if ask_clicked and question:
-    start = time.time()
-    passages = retrieve(question, index, meta, embed_model, k=K)
+    # Retrieve first (fast)
+    passages = retrieve(
+        question, 
+        st.session_state["index"], 
+        st.session_state["meta"], 
+        st.session_state["embed_model"], 
+        k=K
+    )
+    
+    if not passages:
+        st.error("No passages found.")
+        st.stop()
+
     top_score = passages[0]["score"]
 
     if top_score < REFUSAL_THRESHOLD:
         st.error(
-            "**REFUSED** — Answer not found in pandas documentation.\n\n"
-            "**Reason:** Top retrieval score (" + str(round(top_score, 3)) +
-            ") is below our confidence threshold (" + str(REFUSAL_THRESHOLD) + ").\n\n"
-            "The docs do not contain a direct answer to this question. "
-            "The system refuses instead of making up an answer."
+            f"**REFUSED** — Answer not found in pandas documentation.\n\n"
+            f"**Reason:** Top retrieval score ({round(top_score, 3)}) is below our confidence threshold ({REFUSAL_THRESHOLD})."
         )
     else:
-        with st.spinner("Generating answer..."):
-            tokenizer, gen_model, device = load_generator()
-            answer = generate(question, passages, tokenizer, gen_model, device)
-        elapsed = time.time() - start
+        # Load generator only when needed
+        if "generator_loaded" not in st.session_state:
+            with st.spinner("Loading AI model (this takes ~30s on CPU)..."):
+                tokenizer, gen_model = load_generator()
+                if tokenizer and gen_model:
+                    st.session_state["generator_loaded"] = True
+                    st.session_state["tokenizer"] = tokenizer
+                    st.session_state["gen_model"] = gen_model
+                else:
+                    st.error("Model failed to load due to resource limits.")
+                    st.stop()
 
-        if answer.strip().upper().startswith("NOT_FOUND"):
-            st.error(
-                "**REFUSED** — The model determined the retrieved passages "
-                "do not answer this question, even though retrieval confidence "
-                "was above threshold (" + str(round(top_score, 3)) + ")."
-            )
+        if st.session_state["generator_loaded"]:
+            with st.spinner("Generating answer..."):
+                try:
+                    answer = generate(
+                        question, 
+                        passages, 
+                        st.session_state["tokenizer"], 
+                        st.session_state["gen_model"]
+                    )
+                    
+                    if answer.strip().upper().startswith("NOT_FOUND"):
+                        st.error("**REFUSED** — The model determined the retrieved passages do not answer this question.")
+                    else:
+                        st.success("**Answer:**\n\n" + answer)
+                        st.markdown(f"**Retrieval confidence:** {round(top_score, 3)}")
+                except Exception as e:
+                    st.error(f"Generation failed: {e}")
+                    st.info("This might be due to memory limits. Try a simpler question or upgrade resources.")
         else:
-            st.success("**Answer:**\n\n" + answer)
-            st.markdown(
-                "**Retrieval confidence:** " + str(round(top_score, 3)) +
-                " (above " + str(REFUSAL_THRESHOLD) + " threshold)"
-            )
-            st.markdown("**Response time:** " + str(round(elapsed, 2)) + "s")
+            st.error("Generator model not loaded.")
 
-        with st.expander("🔍 Retrieved passages (all " + str(K) + ")", expanded=False):
-            for i, p in enumerate(passages, 1):
-                header = (
-                    "**" + str(i) + ". " + p["doc_name"] +
-                    " (" + p["section"] + ") — score: " + str(round(p["score"], 3)) + "**"
-                )
-                st.markdown(header)
-                st.code(p["text"], language=None)
-                st.markdown("---")
+    # Show passages
+    with st.expander("🔍 Retrieved passages (all " + str(K) + ")", expanded=False):
+        for i, p in enumerate(passages, 1):
+            header = f"**{i}. {p['doc_name']} ({p['section']}) — score: {round(p['score'], 3)}**"
+            st.markdown(header)
+            st.code(p["text"], language=None)
+            st.markdown("---")
 
 elif ask_clicked and not question:
     st.warning("Please enter a question first.")
@@ -224,9 +278,6 @@ st.markdown(
     "### About This System\n"
     "- **Docs indexed:** 2,087 pandas API pages → 11,855 passages\n"
     "- **Retriever:** BAAI/bge-small-en-v1.5\n"
-    "- **Generator:** Qwen 2.5 3B Instruct\n"
-    "- **Refusal threshold:** 0.82 (chosen on dev set)\n"
-    "- **Heldback results:** 100% correct refusal on 20 unanswerable questions\n\n"
-    "Built for CAID internship at Namal University Mianwali by Muhammad Asad.\n\n"
-    "[GitHub Repository](https://github.com/mrerror313coder/pandas_qa)"
+    "- **Generator:** Qwen 2.5 3B Instruct (CPU Mode)\n"
+    "- **Note:** Running on free tier resources. Response times may be slow."
 )
