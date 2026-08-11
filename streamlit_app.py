@@ -1,16 +1,18 @@
 """
-streamlit_app.py - With LLM (SmolLM2-360M)
-This will show the direct answer like Gradio
+streamlit_app.py - Full RAG Pipeline (Retrieval + Generation)
+Runs on CPU with HuggingFace SmolLM2-360M-Instruct
+Shows direct answer + source like Gradio
 """
 
 import streamlit as st
 import json
 import numpy as np
 import faiss
-from sentence_transformers import SentenceTransformer
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+import re
 import os
+from sentence_transformers import SentenceTransformer
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 st.set_page_config(
     page_title="Pandas QA — Anti-Hallucination Assistant",
@@ -23,7 +25,7 @@ GEN_MODEL_NAME = "HuggingFaceTB/SmolLM2-360M-Instruct"
 REFUSAL_THRESHOLD = 0.82
 K = 5
 
-# Simplified prompt
+# Simple prompt for small model
 PROMPT_TEMPLATE = """Answer the question using ONLY the text below.
 If you don't know, say "NOT_FOUND".
 
@@ -36,9 +38,10 @@ Answer:"""
 
 @st.cache_resource
 def load_retrieval_system():
+    """Loads FAISS index and embedding model."""
     try:
         if not os.path.exists("data/index_400/passages.faiss"):
-            st.error("❌ Data files missing!")
+            st.error("❌ Data files missing! Ensure 'data/index_400' is in your repo.")
             return None, None, None
         
         index = faiss.read_index("data/index_400/passages.faiss")
@@ -57,8 +60,9 @@ def load_retrieval_system():
 
 @st.cache_resource
 def load_generator():
+    """Loads the SmolLM2 model."""
     try:
-        st.info("⏳ Loading AI model (this takes ~15s)...")
+        st.info("⏳ Loading AI model (SmolLM2-360M)... this takes ~15s on CPU.")
         
         tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
         
@@ -70,16 +74,17 @@ def load_generator():
         )
         model.eval()
         
+        st.success("✅ Model loaded successfully!")
         return tokenizer, model
     except Exception as e:
         st.error("Failed to load generator: " + str(e))
         return None, None
 
-def retrieve(question, index, meta, model, k=K):
-    if index is None or model is None:
+def retrieve(question, index, meta, embed_model, k=K):
+    if index is None or embed_model is None:
         return []
     
-    q_embedding = model.encode([question], normalize_embeddings=True).astype(np.float32)
+    q_embedding = embed_model.encode([question], normalize_embeddings=True).astype(np.float32)
     scores, indices = index.search(q_embedding, k)
     
     passages = []
@@ -123,24 +128,25 @@ def generate(question, passages, tokenizer, model):
     if "NOT_FOUND" in raw_answer.upper():
         return "NOT_FOUND", None
     
-    # Try to extract source
-    import re
+    # Try to extract source if present
     source_match = re.search(r"Source:\s*(\S+)", raw_answer, re.IGNORECASE)
     source_text = source_match.group(1) if source_match else None
     
-    # Clean answer
+    # Clean answer text
     answer_text = re.sub(r"\s*Source:\s*\S+", "", raw_answer, flags=re.IGNORECASE).strip()
     if not answer_text:
         answer_text = raw_answer
         
     return answer_text, source_text
 
-# UI
+# --- UI ---
+
 st.title("📊 Pandas QA — Anti-Hallucination Documentation Assistant")
 
 st.markdown(
     "Ask any question about the **pandas library**. This system answers **only** from "
-    "the official pandas 3.0.5 API documentation."
+    "the official pandas 3.0.5 API documentation. When docs don't contain the answer, "
+    "it **refuses** instead of hallucinating."
 )
 
 # Load retrieval
@@ -169,9 +175,10 @@ if st.button("Ask", type="primary"):
             
             if top_score < REFUSAL_THRESHOLD:
                 st.error(
-                    "**REFUSED** — Answer not found.\n\n"
+                    "**REFUSED** — Answer not found in pandas documentation.\n\n"
                     "**Reason:** Top retrieval score (" + str(round(top_score, 3)) +
-                    ") is below threshold (" + str(REFUSAL_THRESHOLD) + ")."
+                    ") is below our confidence threshold (" + str(REFUSAL_THRESHOLD) + ").\n\n"
+                    "The docs likely do not contain a direct answer. The system refuses instead of hallucinating."
                 )
             else:
                 # Load generator
@@ -182,20 +189,55 @@ if st.button("Ask", type="primary"):
                         answer_text, source_text = generate(question, passages, tokenizer, gen_model)
                         
                         if answer_text.upper() == "NOT_FOUND":
-                            st.error("**REFUSED**: Model could not find answer in context.")
+                            st.error(
+                                "**REFUSED** — The model determined the retrieved passages do not contain the answer."
+                            )
                         else:
+                            # Display Direct Answer (Green Box)
                             st.success("**Answer:** " + answer_text)
                             
+                            # Display Source (Blue Box)
                             if source_text:
-                                st.info("**Source:** " + source_text)
+                                st.info("**Source:** `" + source_text + "`")
                             
-                            st.caption("Confidence: " + str(round(top_score, 3)))
+                            st.caption("🎯 Retrieval Confidence: " + str(round(top_score, 3)) + " (above " + str(REFUSAL_THRESHOLD) + ")")
                 else:
-                    st.error("Model failed to load.")
+                    st.error("❌ Model failed to load.")
 
-# Show passages
-with st.expander("🔍 View Retrieved Passages"):
-    for i, p in enumerate(passages, 1):
-        st.markdown("**" + str(i) + ". `" + p["doc_name"] + "` — score: " + str(round(p["score"], 3)) + "**")
-        st.code(p["text"][:500], language=None)
-        st.markdown("---")
+    # Show Retrieved Passages
+    with st.expander("🔍 View Retrieved Passages (click to expand)"):
+        for i, p in enumerate(passages, 1):
+            st.markdown("**" + str(i) + ". `" + p["doc_name"] + "` (" + p["section"] + ") — score: " + str(round(p["score"], 3)) + "**")
+            st.code(p["text"][:500], language=None)
+            st.markdown("---")
+
+# Example questions
+st.markdown("---")
+st.markdown("### Try these examples:")
+
+examples = [
+    "What does the 'how' parameter do in DataFrame.merge?",
+    "What is read_csv in pandas?",
+    "What does DataFrame.melt do?",
+    "How do I filter rows in a DataFrame?",
+    "What is the difference between loc and iloc?",
+]
+
+cols = st.columns(2)
+for i, ex in enumerate(examples):
+    with cols[i % 2]:
+        if st.button(ex, key="ex_" + str(i)):
+            st.query_params["q"] = ex
+            st.rerun()
+
+# Footer
+st.markdown("---")
+st.markdown(
+    "### About This System\n"
+    "- **Docs indexed:** 2,087 pandas API pages → 11,855 passages\n"
+    "- **Retriever:** BAAI/bge-small-en-v1.5\n"
+    "- **Generator:** HuggingFace **SmolLM2-360M-Instruct** (CPU-optimized)\n"
+    "- **Goal:** Zero hallucinations — refuses if answer not found in docs.\n\n"
+    "Built for CAID internship at Namal University Mianwali by Muhammad Asad Riaz.\n\n"
+    "[GitHub Repository](https://github.com/mrerror313coder/pandas_qa)"
+)
