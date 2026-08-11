@@ -54,11 +54,23 @@ def load_retrieval_system():
 def load_generator():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tokenizer = AutoTokenizer.from_pretrained(GEN_MODEL_NAME)
-    model = AutoModelForCausalLM.from_pretrained(
-        GEN_MODEL_NAME,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-        device_map=device,
-    )
+
+    if device == "cuda":
+        # device_map only accepts "auto"/"balanced"/"sequential"/a dict -
+        # a bare "cuda" string works here because HF special-cases it,
+        # but "cpu" does not, so we branch instead of passing device
+        # straight through.
+        model = AutoModelForCausalLM.from_pretrained(
+            GEN_MODEL_NAME,
+            torch_dtype=torch.float16,
+            device_map="auto",
+        )
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            GEN_MODEL_NAME,
+            torch_dtype=torch.float32,
+        ).to(device)
+
     model.eval()
     return tokenizer, model, device
 
