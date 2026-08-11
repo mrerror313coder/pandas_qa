@@ -2,6 +2,7 @@ streamlit
 sentence-transformers
 faiss-cpu
 numpy<2.0
-torch==2.5.1
-torchvision==0.20.1
-transformers==4.46.3
+torch
+torchvision
+transformers
+accelerate
