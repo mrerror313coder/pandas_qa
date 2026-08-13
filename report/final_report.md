@@ -1,7 +1,7 @@
 # Document Question Answering with Cited Sources
 ## Pandas API Documentation Assistant
 
-**Intern:** Muhammad Asad
+**Intern:** Muhammad Asad Riaz
 **Supervisor:** Dr. Tassadaq Hussain
 **Co-Supervisor:** Kamran Younis
 **Affiliation:** Centre for AI & BigData, Namal University Mianwali
